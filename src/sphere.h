@@ -16,6 +16,8 @@ public:
     __device__ virtual bool hit(
         const ray& r, float t_min, float t_max, hit_record& rec) const override;
 
+    virtual bool bounding_box(float time0, float time1, AxisAllignedBoundingBox& outbox) const override;
+
 public:
     glm::vec3 center;
     float radius;
@@ -46,5 +48,10 @@ __device__ bool sphere::hit(const ray& r, float t_min, float t_max, hit_record& 
     glm::vec3 outward_normal = (rec.p - center) / radius;
     rec.set_face_normal(r, outward_normal);
     rec.mat_ptr = mat_ptr;
+    return true;
+}
+
+bool sphere::bounding_box(float time0, float time1, AxisAllignedBoundingBox& outbox)const {
+    outbox = AxisAllignedBoundingBox(center - glm::vec3(radius),center+glm::vec3(radius));
     return true;
 }

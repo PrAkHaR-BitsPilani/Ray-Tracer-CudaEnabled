@@ -11,7 +11,7 @@ CUDA INCLUDE
 */
 #include "device_launch_parameters.h"
 #include <driver_types.h>
-#include <cuda_runtime_api.h>
+#include <cuda_runtime.h>
 #include <curand_kernel.h>
 
 
@@ -24,6 +24,7 @@ HEADER INCLUDE
 #include "sphere.h"
 #include "plane.h"
 #include "hittable_list.h"
+#include "BVH_Node.h"
 
 /*
 EXTERNAL APIs
@@ -49,10 +50,10 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
 
 __device__ bool hitLightSource(const ray& r, float t_max)
 {
-	glm::vec3 p(0,5,0);
-	glm::vec3 x_axis(0,0,1);
-	glm::vec3 y_axis(-1,0,0);
-	glm::vec3 normal = glm::cross(x_axis , y_axis);
+	glm::vec3 p(0, 5, 0);
+	glm::vec3 x_axis(0, 0, 1);
+	glm::vec3 y_axis(-1, 0, 0);
+	glm::vec3 normal = glm::cross(x_axis, y_axis);
 	float x_range = 2.0f;
 	float y_range = 2.0f;
 	float t_min = 0.001f;
@@ -73,17 +74,17 @@ __device__ bool hitLightSource(const ray& r, float t_max)
 	return true;
 }
 
-__device__ glm::vec3 color_ray(const ray& r, hittable** world, int depth, curandState* local_rand_state)
+__device__ glm::vec3 color_ray(const ray& r, hittable_list** world, int depth, curandState* local_rand_state)
 {
 	ray cur_ray = r;
 	glm::vec3 cur_attenuation(1.0f);
-	while(depth--)
+	while (depth--)
 	{
 
 		hit_record rec;
 		if ((*world)->hit(cur_ray, 0.001f, FLT_MAX, rec))
 		{
-			
+
 			/*if (hitLightSource(cur_ray,rec.t))
 				return cur_attenuation;*/
 
@@ -96,7 +97,7 @@ __device__ glm::vec3 color_ray(const ray& r, hittable** world, int depth, curand
 			}
 			else return glm::vec3(0);
 		}
-		else{
+		else {
 
 			/*if (hitLightSource(cur_ray, FLT_MAX))
 				return cur_attenuation;*/
@@ -124,10 +125,10 @@ __global__ void render_init(int max_x, int max_y, curandState* rand_state) {
 	curand_init(1984 + pixel_index, 0, 0, &rand_state[pixel_index]);
 }
 
-__global__ void render(unsigned char* fb, int max_x, int max_y, camera cam, hittable** world, curandState* rand_state, int loopIndex, int loopCount, int number_of_samples, int depth)
+__global__ void render(unsigned char* fb, int max_x, int max_y, camera cam, hittable_list** world, curandState* rand_state, int loopIndex, int loopCount, int number_of_samples, int depth)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x + loopIndex * blockDim.x * loopCount;
-	int j = threadIdx.y + blockIdx.y* blockDim.y;
+	int j = threadIdx.y + blockIdx.y * blockDim.y;
 	if ((i >= max_x) || (j >= max_y)) return;
 	int pixel_index = (j * max_x + i);
 	curandState local_rand_state = rand_state[pixel_index];
@@ -138,17 +139,20 @@ __global__ void render(unsigned char* fb, int max_x, int max_y, camera cam, hitt
 		float u = float(i + curand_uniform(&local_rand_state)) / float(max_x);
 		float v = float(j + curand_uniform(&local_rand_state)) / float(max_y);
 		ray r = cam.get_ray(u, v);
+		auto temp1 = clock();
 		pixelColor += color_ray(r, world, depth, &local_rand_state);
+		auto temp2 = clock();
+		//printf("Time taken for pixelIndex %d : %lf\n", pixel_index, ((double)(temp2 - temp1)) / CLOCKS_PER_SEC);
 	}
-	fb[pixel_index + 2] = 255 * clamp(sqrt(pixelColor.b/number_of_samples),0,0.999f);
-	fb[pixel_index + 0] = 255 * clamp(sqrt(pixelColor.r/number_of_samples),0,0.999f);
-	fb[pixel_index + 1] = 255 * clamp(sqrt(pixelColor.g/number_of_samples),0,0.999f);
+	fb[pixel_index + 2] = 255 * clamp(sqrt(pixelColor.b / number_of_samples), 0, 0.999f);
+	fb[pixel_index + 0] = 255 * clamp(sqrt(pixelColor.r / number_of_samples), 0, 0.999f);
+	fb[pixel_index + 1] = 255 * clamp(sqrt(pixelColor.g / number_of_samples), 0, 0.999f);
 }
 
 #define RND (curand_uniform(&local_rand_state))	
 
-__global__ void create_world(hittable** d_list, hittable** d_world, int limit, curandState* rand_state) {
-	if (threadIdx.x == 0 && blockIdx.x == 0) 
+__global__ void create_world(hittable** d_list, hittable_list** d_world, int limit, curandState* rand_state) {
+	if (threadIdx.x == 0 && blockIdx.x == 0)
 	{
 
 		curandState local_rand_state = *rand_state;
@@ -167,24 +171,25 @@ __global__ void create_world(hittable** d_list, hittable** d_world, int limit, c
 					//d_list[i++] = new sphere(centre, 0.2, new lambertian(glm::vec3(RND, RND, RND)));
 				}
 				else {
-					d_list[i++] = new sphere(centre , 0.2, new metal(glm::vec3(0.5f*(1.0f+RND),0.5f*(1.0f+RND),0.5f*(1.0f+RND)), 0.5f * RND));
+					d_list[i++] = new sphere(centre, 0.2, new metal(glm::vec3(0.5f * (1.0f + RND), 0.5f * (1.0f + RND), 0.5f * (1.0f + RND)), 0.5f * RND));
 				}
 			}
 		}
 
 		d_list[i++] = new sphere(glm::vec3(0, -1000, 0), 1000, new lambertian(glm::vec3(0.5f)));
 
-		d_list[i++] = new sphere(glm::vec3( 0, 1, 0), 1, new metal(glm::vec3(0.7, 0.5, 0.4),0.0f));
-		d_list[i++] = new sphere(glm::vec3(-4, 1, 0), 1, new metal(glm::vec3(0.7, 0.5, 0.4),0.0f));
-		d_list[i++] = new sphere(glm::vec3( 4, 1, 0), 1, new metal(glm::vec3(0.7, 0.5, 0.4),0.0f));
-		d_list[i++] = new plane(glm::vec3(0,0,-5),glm::vec3(1,0,0),glm::vec3(0,1,0),20,20, new metal(glm::vec3(0.7,0.5,0.4), 0.0));
+		d_list[i++] = new sphere(glm::vec3(0, 1, 0), 1, new metal(glm::vec3(0.7, 0.5, 0.4), 0.0f));
+		d_list[i++] = new sphere(glm::vec3(-4, 1, 0), 1, new metal(glm::vec3(0.7, 0.5, 0.4), 0.0f));
+		d_list[i++] = new sphere(glm::vec3(4, 1, 0), 1, new metal(glm::vec3(0.7, 0.5, 0.4), 0.0f));
+		//d_list[i++] = new plane(glm::vec3(0, 0, -5), glm::vec3(1, 0, 0), glm::vec3(0, 1, 0), 20, 20, new metal(glm::vec3(0.7, 0.5, 0.4), 0.0));
 
 		*rand_state = local_rand_state;
-		*d_world = new hittable_list(d_list, 4 * limit * limit + 1 + 4);
+
+		
+		*d_world = new hittable_list(d_list, 4 * limit * limit + 1 + 3);
 	}
 }
-
-__global__ void free_world(hittable** d_list, hittable** d_world, int limit) {
+__global__ void free_world(hittable** d_list, hittable_list** d_world, int limit) {
 	int i = 0;
 	for (; i < 4 * limit * limit; i++)
 	{
@@ -204,8 +209,8 @@ __global__ void free_world(hittable** d_list, hittable** d_world, int limit) {
 	delete ((sphere*)d_list[i])->mat_ptr;
 	delete d_list[i++];
 
-	delete ((plane*)d_list[i])->mat_ptr;
-	delete d_list[i++];
+	/*delete ((plane*)d_list[i])->mat_ptr;
+	delete d_list[i++];*/
 
 	delete* d_world;
 }
@@ -215,8 +220,8 @@ int main()
 {
 	stbi_flip_vertically_on_write(1);
 
-	const float aspectRatio = 3840.0f / 2160.0f;
-	const int imageWidth = 3840;
+	const float aspectRatio = 1 / 1; //3840.0f / 2160.0f;
+	const int imageWidth = 400;
 	const int imageHeight = imageWidth / aspectRatio;
 	int num_of_pixels = imageWidth * imageHeight;
 	int number_of_samples = 10;
@@ -226,11 +231,11 @@ int main()
 	int ty = 16;
 
 	//CAMERA
-	camera cam(glm::vec3(-3, 2, 6), glm::vec3(0,0,-5), glm::vec3(0, 1, 0), 45, aspectRatio);
+	camera cam(glm::vec3(-3, 2, 6), glm::vec3(0, 0, -5), glm::vec3(0, 1, 0), 45, aspectRatio);
 
 	std::cerr << "Rendering a " << imageWidth << "x" << imageHeight << " image ";
 	std::cerr << "in " << tx << "x" << ty << " blocks.\n";
-	std::cerr << "Number of blocks: " << (imageWidth / tx + 1) * ( imageHeight / ty + 1) << "\n";
+	std::cerr << "Number of blocks: " << (imageWidth / tx + 1) * (imageHeight / ty + 1) << "\n";
 	std::cerr << "Number of threads per block: " << tx * ty << "\n";
 	std::cerr << "Samples per pixel: " << number_of_samples << "\n";
 	std::cerr << "Max depth of ray bounce: " << depth << "\n";
@@ -244,18 +249,26 @@ int main()
 	curandState* d_rand_state2;
 	CudaCall(cudaMalloc((void**)&d_rand_state2, num_of_pixels * sizeof(curandState)));
 
-	rand_init <<<1, 1 >>> (d_rand_state2);
+	rand_init << <1, 1 >> > (d_rand_state2);
 	CudaCall(cudaGetLastError());
 	CudaCall(cudaDeviceSynchronize());
 
 	//WORLD
 	hittable** d_list;
-	CudaCall(cudaMallocManaged((void**)&d_list, (4 * limit * limit + 1 + 4 )*sizeof(hittable*)));
-	hittable** d_world;
-	CudaCall(cudaMallocManaged((void**)&d_world, sizeof(hittable*)));
-	create_world <<<1,1>>> (d_list, d_world,limit,d_rand_state2);
+	CudaCall(cudaMallocManaged(&d_list, (4 * limit * limit + 1 + 3) * sizeof(hittable*)));
+	hittable_list** d_world;
+	CudaCall(cudaMallocManaged(&d_world, sizeof(hittable_list*)));
+	create_world <<<1, 1 >>> (d_list, d_world, limit, d_rand_state2);
 	CudaCall(cudaGetLastError());
 	CudaCall(cudaDeviceSynchronize());
+
+	/*hittable_list* d_world_copy;
+	CudaCall(cudaMallocHost(&d_world_copy, sizeof(hittable_list)));
+	CudaCall(cudaMemcpy((void*)d_world_copy, (void*)*d_world, sizeof(hittable_list*), cudaMemcpyDeviceToHost));*/
+
+	BVH_Node* root;
+	CudaCall(cudaMallocHost((void**)&root, sizeof(BVH_Node)));
+	//root = new BVH_Node(*d_world_copy, 0, 1);
 
 	//TIMING
 	clock_t start, stop;
@@ -263,9 +276,9 @@ int main()
 
 	int loopCount = 1;
 
-	dim3 blocks(((imageWidth+tx-1)/tx + loopCount - 1)/loopCount, (imageHeight+ty-1)/ty);
+	dim3 blocks(((imageWidth + tx - 1) / tx + loopCount - 1) / loopCount, (imageHeight + ty - 1) / ty);
 	dim3 threads(tx, ty);
-	render_init <<<blocks, threads>>> (imageWidth, imageHeight, d_rand_state);
+	render_init << <blocks, threads >> > (imageWidth, imageHeight, d_rand_state);
 	CudaCall(cudaGetLastError());
 	CudaCall(cudaDeviceSynchronize());
 	/*render << <blocks, threads >> > (fb, imageWidth, imageHeight, cam, d_world, d_rand_state, 0, block_per_loop, number_of_samples, depth);
@@ -273,7 +286,7 @@ int main()
 	CudaCall(cudaDeviceSynchronize());*/
 	for (int i = 0; i < loopCount; i++)
 	{
-		render <<<blocks, threads >>> (fb, imageWidth, imageHeight, cam, d_world, d_rand_state, i, ((imageWidth + tx - 1) / tx + loopCount - 1) / loopCount, number_of_samples, depth);
+		render << <blocks, threads >> > (fb, imageWidth, imageHeight, cam, d_world, d_rand_state, i, ((imageWidth + tx - 1) / tx + loopCount - 1) / loopCount, number_of_samples, depth);
 		CudaCall(cudaGetLastError());
 		CudaCall(cudaDeviceSynchronize());
 	}
@@ -287,13 +300,11 @@ int main()
 
 	// clean up
 	CudaCall(cudaDeviceSynchronize());
-	free_world <<<1, 1>>> (d_list, d_world,limit);
+	free_world << <1, 1 >> > (d_list, d_world, limit);
 	CudaCall(cudaGetLastError());
 	CudaCall(cudaFree(d_list));
 	CudaCall(cudaFree(d_world));
 	CudaCall(cudaFree(fb));
 
 	cudaDeviceReset();
-
-
 }

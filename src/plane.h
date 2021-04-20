@@ -23,6 +23,8 @@ public:
     __device__ virtual bool hit(
         const ray& r, float t_min, float t_max, hit_record& rec) const override;
 
+    virtual bool bounding_box(float time0, float time1, AxisAllignedBoundingBox& outbox) const override;
+
 public:
     glm::vec3 p;
     glm::vec3 x_axis;
@@ -55,4 +57,8 @@ __device__ bool plane::hit(const ray& r, float t_min, float t_max, hit_record& r
     rec.mat_ptr = mat_ptr;
     rec.set_face_normal(r, normal);
     return true;
+}
+
+bool plane::bounding_box(float time0, float time1, AxisAllignedBoundingBox& outbox)const {
+    return false;
 }

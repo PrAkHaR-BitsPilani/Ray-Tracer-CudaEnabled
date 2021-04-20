@@ -14,8 +14,9 @@ public:
     __device__ hittable_list(hittable** l, int n) { list = l; list_size = n; }
     __device__ virtual bool hit(
         const ray& r, float t_min, float t_max, hit_record& rec) const override;
+    virtual bool bounding_box(float time0, float time1, AxisAllignedBoundingBox& outbox) const override;
 
-private:
+public:
     hittable** list;
     int list_size;
 };
@@ -35,4 +36,17 @@ __device__ bool hittable_list::hit(const ray& r, float t_min, float t_max, hit_r
     }
 
     return hit_anything;
+}
+
+bool hittable_list::bounding_box(float time0, float time1, AxisAllignedBoundingBox& outbox)const {
+    if (list_size == 0)
+        return false;
+    AxisAllignedBoundingBox tempBox;
+    for (int i = 0; i < list_size; i++)
+    {
+        if (!list[i]->bounding_box(time0, time1, tempBox))return false;
+        if (i)outbox = surroundingBox(outbox, tempBox);
+        else outbox = tempBox;
+    }
+    return true;
 }
