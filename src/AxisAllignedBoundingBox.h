@@ -5,9 +5,9 @@
 class AxisAllignedBoundingBox {
 	
 public:
-	 AxisAllignedBoundingBox()
+	 __device__ AxisAllignedBoundingBox()
 		: minimum(glm::vec3(0)) , maximum(glm::vec3(0)) {}
-	 AxisAllignedBoundingBox(const glm::vec3& mini, const glm::vec3& maxi)
+	 __device__ AxisAllignedBoundingBox(const glm::vec3& mini, const glm::vec3& maxi)
 		:minimum(mini), maximum(maxi) {}
 	
 	__device__ bool hit(const ray& r, float t_min, float t_max) const
@@ -36,7 +36,7 @@ public:
 		glm::vec3 maximum;
 };
 
-AxisAllignedBoundingBox surroundingBox(AxisAllignedBoundingBox& box0, AxisAllignedBoundingBox& box1)
+__device__ AxisAllignedBoundingBox surroundingBox(AxisAllignedBoundingBox& box0, AxisAllignedBoundingBox& box1)
 {
 	glm::vec3 start(fmin(box0.minimum[0], box1.minimum[0]), fmin(box0.minimum[1], box1.minimum[1]), fmin(box0.minimum[2], box1.minimum[2]));
 

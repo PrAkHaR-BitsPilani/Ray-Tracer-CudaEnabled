@@ -21,7 +21,7 @@ __managed__ float pi = 3.1415926535897;
 
 // Utility Functions
 
-inline float degrees_to_radians(float degrees) {
+__device__ float degrees_to_radians(float degrees) {
     return degrees * pi / 180.0f;
 }
 

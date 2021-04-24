@@ -15,6 +15,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\AxisAllignedBoundingBox.h" />
+    <ClInclude Include="src\box.h" />
     <ClInclude Include="src\BVH_Node.h" />
     <ClInclude Include="src\camera.h" />
     <ClInclude Include="src\color.h" />
@@ -303,6 +304,7 @@
     <ClInclude Include="src\external\stb_image\stb_image.h" />
     <ClInclude Include="src\external\stb_image\stb_image_resize.h" />
     <ClInclude Include="src\external\stb_image\stb_image_write.h" />
+    <ClInclude Include="src\flip_face.h" />
     <ClInclude Include="src\hittable.h" />
     <ClInclude Include="src\hittable_list.h" />
     <ClInclude Include="src\material.h" />
@@ -310,6 +312,9 @@
     <ClInclude Include="src\rtweekend.h" />
     <ClInclude Include="src\sphere.h" />
     <ClInclude Include="src\plane.h" />
+    <ClInclude Include="src\texture.h" />
+    <ClInclude Include="src\rect.h" />
+    <ClInclude Include="src\transform.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="src\external\glm\detail\func_common.inl" />

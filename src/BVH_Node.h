@@ -12,12 +12,12 @@ inline bool box_z_compare(hittable* a, hittable* b);
 
 class BVH_Node : public hittable {
 public:
-	BVH_Node();
+	__device__ BVH_Node();
 
-	BVH_Node(hittable_list list, float time_0, float time_1)
+	__device__ BVH_Node(hittable_list list, float time_0, float time_1)
 	: BVH_Node(list.list , 0 , list.list_size , time_0 , time_1){}
 
-	BVH_Node(hittable** list, size_t start, size_t end, float time_0, float time_1) {
+	__device__ BVH_Node(hittable** list, size_t start, size_t end, float time_0, float time_1) {
 		auto objects = list;
 		
 		int axis = random_int(0, 2);
@@ -59,7 +59,7 @@ public:
 	__device__ virtual bool hit(
 		const ray& r, float t_min, float t_max, hit_record& rec) const override;
 
-	virtual bool bounding_box(float time0, float time1, AxisAllignedBoundingBox& outbox) const override;
+	__device__ virtual bool bounding_box(float time0, float time1, AxisAllignedBoundingBox& outbox) const override;
 
 public:
 	hittable* left;
@@ -68,7 +68,7 @@ public:
 
 };
 
-bool BVH_Node::bounding_box(float time0, float time1, AxisAllignedBoundingBox& outbox)const {
+__device__ bool BVH_Node::bounding_box(float time0, float time1, AxisAllignedBoundingBox& outbox)const {
 	outbox = box;
 	return true;
 }
@@ -84,24 +84,24 @@ __device__ bool BVH_Node::hit(const ray& r, float t_min, float t_max, hit_record
 
 }
 
-inline bool box_compare(hittable* a, hittable* b, int axis) {
+__device__ inline bool box_compare(hittable* a, hittable* b, int axis) {
 	AxisAllignedBoundingBox aa, bb;
 	if (!a->bounding_box(0, 0, aa) || !b->bounding_box(0, 0, bb))
 		printf("No bounding box found in constructor!");
 	return aa.minimum[axis] < bb.minimum[axis];
 }
 
-bool box_x_compare(hittable* a, hittable* b)
+__device__ bool box_x_compare(hittable* a, hittable* b)
 {
 	return box_compare(a, b, 0);
 }
 
-bool box_y_compare(hittable* a, hittable* b)
+__device__ bool box_y_compare(hittable* a, hittable* b)
 {
 	return box_compare(a, b, 1);
 }
 
-bool box_z_compare(hittable* a, hittable* b)
+__device__ bool box_z_compare(hittable* a, hittable* b)
 {
 	return box_compare(a, b, 2);
 }

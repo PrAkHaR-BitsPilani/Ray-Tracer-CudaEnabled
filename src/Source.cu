@@ -25,6 +25,10 @@ HEADER INCLUDE
 #include "plane.h"
 #include "hittable_list.h"
 #include "BVH_Node.h"
+#include "rect.h"
+#include "box.h"
+#include "flip_face.h"
+#include "transform.h"
 
 /*
 EXTERNAL APIs
@@ -47,37 +51,13 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
 	}
 }
 
-
-__device__ bool hitLightSource(const ray& r, float t_max)
-{
-	glm::vec3 p(0, 5, 0);
-	glm::vec3 x_axis(0, 0, 1);
-	glm::vec3 y_axis(-1, 0, 0);
-	glm::vec3 normal = glm::cross(x_axis, y_axis);
-	float x_range = 2.0f;
-	float y_range = 2.0f;
-	float t_min = 0.001f;
-
-	auto denom = glm::dot(r.dir, normal);
-	if (denom == 0.0f)
-		return false;
-	auto t = glm::dot(normal, p - r.orig) / denom;
-	if (t < t_min || t > t_max)
-		return false;
-
-	auto intersectionPoint = r.at(t);
-	auto distX = glm::dot((intersectionPoint - p), x_axis);
-	auto distY = glm::dot((intersectionPoint - p), y_axis);
-
-	if (fabs(distX) > fabs(x_range) || fabs(distY) > fabs(y_range))
-		return false;
-	return true;
-}
-
 __device__ glm::vec3 color_ray(const ray& r, hittable_list** world, int depth, curandState* local_rand_state)
 {
 	ray cur_ray = r;
 	glm::vec3 cur_attenuation(1.0f);
+	glm::vec3 cur_emitted(0.0);
+	glm::vec3 day_time(1);
+	glm::vec3 sky;
 	while (depth--)
 	{
 
@@ -90,25 +70,28 @@ __device__ glm::vec3 color_ray(const ray& r, hittable_list** world, int depth, c
 
 			ray scattered;
 			glm::vec3 attenuation;
+			glm::vec3 emitted = rec.mat_ptr->emitted(cur_ray, rec, rec.u, rec.v, rec.p);
 			if (rec.mat_ptr->scatter(cur_ray, rec, attenuation, scattered, local_rand_state))
 			{
 				cur_attenuation *= attenuation;
+				cur_emitted += emitted * cur_attenuation;
 				cur_ray = scattered;
 			}
-			else return glm::vec3(0);
+			else return cur_emitted + emitted * cur_attenuation;
 		}
 		else {
 
-			/*if (hitLightSource(cur_ray, FLT_MAX))
-				return cur_attenuation;*/
-
-			glm::vec3 dir = glm::normalize(r.dir);
+			glm::vec3 dir = glm::normalize(cur_ray.dir);
 			float t = 0.5f * (dir.y + 1.0f);
-			return glm::vec3(1.0) * cur_attenuation * ((1.0f - t) * glm::vec3(1.0, 1.0, 1.0) + t * glm::vec3(0.5, 0.7, 1.0));
+			//sky = ((1.0f - t) * glm::vec3(0.8, 0.2, 0.9) + t * glm::vec3(0.1, 0.2, 0.9));
+			sky = ((1.0f - t) * glm::vec3(1) + t * glm::vec3(0.0));
+			
+			return cur_emitted;// +cur_attenuation * day_time * sky;
+			
 		}
 	}
 
-	return glm::vec3(0);
+	return cur_emitted;
 }
 
 __global__ void rand_init(curandState* rand_state) {
@@ -139,10 +122,7 @@ __global__ void render(unsigned char* fb, int max_x, int max_y, camera cam, hitt
 		float u = float(i + curand_uniform(&local_rand_state)) / float(max_x);
 		float v = float(j + curand_uniform(&local_rand_state)) / float(max_y);
 		ray r = cam.get_ray(u, v);
-		auto temp1 = clock();
 		pixelColor += color_ray(r, world, depth, &local_rand_state);
-		auto temp2 = clock();
-		//printf("Time taken for pixelIndex %d : %lf\n", pixel_index, ((double)(temp2 - temp1)) / CLOCKS_PER_SEC);
 	}
 	fb[pixel_index + 2] = 255 * clamp(sqrt(pixelColor.b / number_of_samples), 0, 0.999f);
 	fb[pixel_index + 0] = 255 * clamp(sqrt(pixelColor.r / number_of_samples), 0, 0.999f);
@@ -150,6 +130,39 @@ __global__ void render(unsigned char* fb, int max_x, int max_y, camera cam, hitt
 }
 
 #define RND (curand_uniform(&local_rand_state))	
+
+__global__ void createCornellBox(hittable** d_list, hittable_list** d_world)
+{
+	if (threadIdx.x == 0 && blockIdx.x == 0)
+	{
+		int i = 0;
+		auto red = new lambertian(glm::vec3(0.65, 0.05, 0.05));
+		auto green = new lambertian(glm::vec3(0.12, 0.45, 0.15));
+		auto light = new diffuse_light(glm::vec3(15));
+		auto white = new lambertian(glm::vec3(0.73));
+		auto magenta = new lambertian(glm::vec3(0.8, 0.2, 0.9));
+		auto blue = new metal(glm::vec3(0.1, 0.2, 0.9), 0.5);
+
+		d_list[i++] = new yz_rect(0, 10, 0, 10, 10, green);
+		d_list[i++] = new yz_rect(0, 10, 0, 10, 0, red);
+		d_list[i++] = new flip_face(new xz_rect(3, 7, 3, 7, 9.5, light));
+		/*d_list[i++] = new xz_rect(10, 110, 445, 545, 545, light);
+		d_list[i++] = new xz_rect(445, 545, 10, 110, 554, light);
+		d_list[i++] = new xz_rect(445, 545, 445, 545, 554, light);*/
+		d_list[i++] = new xz_rect(0, 10, 0, 10, 0, white);
+		d_list[i++] = new xz_rect(0, 10, 0, 10, 10, white);
+		d_list[i++] = new xy_rect(0, 10, 0, 10, 10, white);
+
+		//d_list[i++] = new sphere(glm::vec3(50, 10, 30), 10, white);
+		
+		d_list[i++] = new RotateY(new box(glm::vec3(130, 0, 65) * 0.018f, glm::vec3(295, 165, 230) * 0.018f, blue),0);
+		d_list[i++] = new box(glm::vec3(265, 0, 295) * 0.018f, glm::vec3(430, 330, 460) * 0.018f, blue);
+
+
+		*d_world = new hittable_list(d_list, 8);
+	}
+
+}
 
 __global__ void create_world(hittable** d_list, hittable_list** d_world, int limit, curandState* rand_state) {
 	if (threadIdx.x == 0 && blockIdx.x == 0)
@@ -167,74 +180,86 @@ __global__ void create_world(hittable** d_list, hittable_list** d_world, int lim
 				glm::vec3 centre(a + RND, 0.2, b + RND);
 				if (material_deciding_factor >= 0.8f)
 				{
-					d_list[i++] = new sphere(centre, 0.2, new lambertian(glm::vec3(RND * RND, RND * RND, RND * RND)));
+					d_list[i++] = new sphere(centre, 0.2, new alienMat(glm::vec3(0.8,0.2,0.9),0.0f));
+					//d_list[i++] = new sphere(centre, 0.2, new metal(glm::vec3(0.5f * (1.0f + RND), 0.5f * (1.0f + RND), 0.5f * (1.0f + RND)), 0.5f * RND));
+					//d_list[i++] = new sphere(centre, 0.2, new lambertian(glm::vec3(RND * RND, RND * RND, RND * RND)));
 					//d_list[i++] = new sphere(centre, 0.2, new lambertian(glm::vec3(RND, RND, RND)));
 				}
 				else {
-					d_list[i++] = new sphere(centre, 0.2, new metal(glm::vec3(0.5f * (1.0f + RND), 0.5f * (1.0f + RND), 0.5f * (1.0f + RND)), 0.5f * RND));
+					d_list[i++] = new sphere(centre, 0.2, new alienMat(glm::vec3(0.1,0.2,0.9),0.0f));
+					//d_list[i++] = new sphere(centre, 0.2, new metal(glm::vec3(0.5f * (1.0f + RND), 0.5f * (1.0f + RND), 0.5f * (1.0f + RND)), 0.5f * RND));
 				}
 			}
 		}
 
-		d_list[i++] = new sphere(glm::vec3(0, -1000, 0), 1000, new lambertian(glm::vec3(0.5f)));
+		d_list[i++] = new sphere(glm::vec3(0, -1000, 0), 1000, new metal(glm::vec3(0.1f),0.2f));
 
-		d_list[i++] = new sphere(glm::vec3(0, 1, 0), 1, new metal(glm::vec3(0.7, 0.5, 0.4), 0.0f));
-		d_list[i++] = new sphere(glm::vec3(-4, 1, 0), 1, new metal(glm::vec3(0.7, 0.5, 0.4), 0.0f));
-		d_list[i++] = new sphere(glm::vec3(4, 1, 0), 1, new metal(glm::vec3(0.7, 0.5, 0.4), 0.0f));
-		//d_list[i++] = new plane(glm::vec3(0, 0, -5), glm::vec3(1, 0, 0), glm::vec3(0, 1, 0), 20, 20, new metal(glm::vec3(0.7, 0.5, 0.4), 0.0));
+		d_list[i++] = new sphere(glm::vec3(-4, 1, 0), 0, new metal(glm::vec3(0.2, 0.9, 0.1),0.0f));
+		d_list[i++] = new sphere(glm::vec3(0, 1, 0), 0, new metal(glm::vec3(0.2, 0.9, 0.1),0.0f));
+		d_list[i++] = new sphere(glm::vec3(4, 1, 0), 0, new metal(glm::vec3(0.2, 0.9, 0.1), 0.0f));
+		d_list[i++] = new xy_rect(-3, 3, 0, 4, -7, new diffuse_light(glm::vec3(4,0,4)));
 
 		*rand_state = local_rand_state;
 
-		
-		*d_world = new hittable_list(d_list, 4 * limit * limit + 1 + 3);
+
+		*d_world = new hittable_list(d_list, 4 * limit * limit + 1 + 4);
 	}
 }
-__global__ void free_world(hittable** d_list, hittable_list** d_world, int limit) {
-	int i = 0;
-	for (; i < 4 * limit * limit; i++)
+
+void DisplayHeader()
+{
+	using namespace std;
+
+	const int kb = 1024;
+	const int mb = kb * kb;
+	cout << "RayTracing.GPU" << endl << "=========" << endl << endl;
+
+	cout << "CUDA version:   v" << CUDART_VERSION << endl;
+	//cout << "Thrust version: v" << THRUST_MAJOR_VERSION << "." << THRUST_MINOR_VERSION << endl << endl;
+
+	int devCount;
+	cudaGetDeviceCount(&devCount);
+	cout << "CUDA Devices: " << endl << endl;
+
+	for (int i = 0; i < devCount; ++i)
 	{
-		delete ((sphere*)d_list[i])->mat_ptr;
-		delete d_list[i];
+		cudaDeviceProp props;
+		cudaGetDeviceProperties(&props, i);
+		cout << i << ": " << props.name << ": " << props.major << "." << props.minor << endl;
+		cout << "  Global memory:   " << props.totalGlobalMem / mb << "mb" << endl;
+		cout << "  Shared memory:   " << props.sharedMemPerBlock / kb << "kb" << endl;
+		cout << "  Constant memory: " << props.totalConstMem / kb << "kb" << endl;
+		cout << "  Block registers: " << props.regsPerBlock << endl << endl;
+
+		cout << "  Warp size:         " << props.warpSize << endl;
+		cout << "  Threads per block: " << props.maxThreadsPerBlock << endl;
+		cout << "  Max block dimensions: [ " << props.maxThreadsDim[0] << ", " << props.maxThreadsDim[1] << ", " << props.maxThreadsDim[2] << " ]" << endl;
+		cout << "  Max grid dimensions:  [ " << props.maxGridSize[0] << ", " << props.maxGridSize[1] << ", " << props.maxGridSize[2] << " ]" << endl;
+		cout << endl;
 	}
-
-	delete ((sphere*)d_list[i])->mat_ptr;
-	delete d_list[i++];
-
-	delete ((sphere*)d_list[i])->mat_ptr;
-	delete d_list[i++];
-
-	delete ((sphere*)d_list[i])->mat_ptr;
-	delete d_list[i++];
-
-	delete ((sphere*)d_list[i])->mat_ptr;
-	delete d_list[i++];
-
-	/*delete ((plane*)d_list[i])->mat_ptr;
-	delete d_list[i++];*/
-
-	delete* d_world;
 }
-
 
 int main()
 {
+
+	DisplayHeader();
+
 	stbi_flip_vertically_on_write(1);
 
-	const float aspectRatio = 1 / 1; //3840.0f / 2160.0f;
-	const int imageWidth = 400;
+	const float aspectRatio = 1;// 3840.0f / 2160.0f;
+	const int imageWidth = 600;
 	const int imageHeight = imageWidth / aspectRatio;
 	int num_of_pixels = imageWidth * imageHeight;
-	int number_of_samples = 10;
+	int number_of_samples = 100;
 	int depth = 10;
 	int limit = 3;
 	int tx = 16;
 	int ty = 16;
 
 	//CAMERA
-	camera cam(glm::vec3(-3, 2, 6), glm::vec3(0, 0, -5), glm::vec3(0, 1, 0), 45, aspectRatio);
+	camera cam(glm::vec3(5, 5, -10), glm::vec3(5, 5, 0), glm::vec3(0, 1, 0), 50, aspectRatio);
 
-	std::cerr << "Rendering a " << imageWidth << "x" << imageHeight << " image ";
-	std::cerr << "in " << tx << "x" << ty << " blocks.\n";
+	std::cerr << "Rendering a " << imageWidth << "x" << imageHeight << " image \n";
 	std::cerr << "Number of blocks: " << (imageWidth / tx + 1) * (imageHeight / ty + 1) << "\n";
 	std::cerr << "Number of threads per block: " << tx * ty << "\n";
 	std::cerr << "Samples per pixel: " << number_of_samples << "\n";
@@ -255,10 +280,10 @@ int main()
 
 	//WORLD
 	hittable** d_list;
-	CudaCall(cudaMallocManaged(&d_list, (4 * limit * limit + 1 + 3) * sizeof(hittable*)));
+	CudaCall(cudaMallocManaged(&d_list, (8) * sizeof(hittable*)));
 	hittable_list** d_world;
 	CudaCall(cudaMallocManaged(&d_world, sizeof(hittable_list*)));
-	create_world <<<1, 1 >>> (d_list, d_world, limit, d_rand_state2);
+	createCornellBox << <1, 1 >> > (d_list, d_world);
 	CudaCall(cudaGetLastError());
 	CudaCall(cudaDeviceSynchronize());
 
@@ -300,7 +325,7 @@ int main()
 
 	// clean up
 	CudaCall(cudaDeviceSynchronize());
-	free_world << <1, 1 >> > (d_list, d_world, limit);
+	//freeCornellBox << <1, 1 >> > (d_list, d_world);
 	CudaCall(cudaGetLastError());
 	CudaCall(cudaFree(d_list));
 	CudaCall(cudaFree(d_world));
@@ -308,3 +333,4 @@ int main()
 
 	cudaDeviceReset();
 }
+
