@@ -1,18 +1,12 @@
-#pragma once
+#ifndef MATERIALH__
+#define MATERIALH__
 
 #include "rtweekend.cuh"
 #include "hittable.cuh"
 #include "texture.cuh"
+#include "vec3.cuh"
 
 #define RANDVEC3 glm::vec3(curand_uniform(local_rand_state),curand_uniform(local_rand_state),curand_uniform(local_rand_state))
-
-__device__ glm::vec3 random_in_unit_sphere(curandState* local_rand_state) {
-    
-    float alpha = pi * (curand_uniform(local_rand_state) - 0.5f);
-    float theta = 2 * pi * curand_uniform(local_rand_state);
-    glm::vec3 p(cos(theta) * sin(alpha), sin(theta) * sin(alpha), cos(alpha));
-    return p;
-}
 
 __device__ glm::vec3 random_unit_vector(curandState* local_rand_state)
 {
@@ -47,7 +41,7 @@ public:
     __device__ bool scatter(
         const ray& r_in, const hit_record& rec, glm::vec3& attenuation, ray& scattered, curandState* local_rand_state)const override {
 
-        glm::vec3 scatterDir = rec.normal + random_in_unit_sphere(local_rand_state);
+        glm::vec3 scatterDir = rec.normal + glm::random_in_unit_sphere(local_rand_state);
         if (nearZero(scatterDir))
             scatterDir = rec.normal;
         scattered = ray(rec.p, scatterDir);
@@ -67,7 +61,7 @@ public:
     __device__ bool scatter(
         const ray& r_in, const hit_record& rec, glm::vec3& attenuation, ray& scattered, curandState* local_rand_state)const override {
         glm::vec3 reflected = glm::normalize(glm::reflect(r_in.dir, rec.normal));
-        scattered = ray(rec.p, reflected + fuzz * random_in_unit_sphere(local_rand_state));
+        scattered = ray(rec.p, reflected + fuzz * glm::random_in_unit_sphere(local_rand_state));
         attenuation = albedo;
         return glm::dot(scattered.dir, rec.normal) > 0;
     }
@@ -110,7 +104,7 @@ public:
     __device__ bool scatter(
         const ray& r_in, const hit_record& rec, glm::vec3& attenuation, ray& scattered, curandState* local_rand_state)const override {
         glm::vec3 reflected = glm::normalize(glm::reflect(r_in.dir, rec.normal));
-        scattered = ray(rec.p, reflected + fuzz * random_in_unit_sphere(local_rand_state));
+        scattered = ray(rec.p, reflected + fuzz * glm::random_in_unit_sphere(local_rand_state));
         attenuation = albedo;
         return glm::dot(scattered.dir, rec.normal) > 0;
     }
@@ -124,3 +118,5 @@ public:
     float fuzz;
     Texture* emit;
 };
+
+#endif

@@ -5,7 +5,7 @@
 
 class camera {
 public:
-    camera(glm::vec3 cameraPos , glm::vec3 target , glm::vec3 worldUp , float vfov , float aspect_ratio) {
+    __device__ camera(glm::vec3 cameraPos , glm::vec3 target , glm::vec3 worldUp , float vfov , float aspect_ratio) {
         
         auto theta = glm::radians(vfov);
         auto h = tan(theta / 2);

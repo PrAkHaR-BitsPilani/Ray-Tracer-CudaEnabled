@@ -14,6 +14,7 @@ public:
         : orig(origin), dir(direction), tm(0)
     {}
 
+
     __device__ ray(const glm::vec3& origin, const glm::vec3& direction, float time)
         : orig(origin), dir(direction), tm(time)
     {}
