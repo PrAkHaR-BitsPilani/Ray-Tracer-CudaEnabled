@@ -18,21 +18,24 @@ CUDA INCLUDE
 /*
 HEADER INCLUDE
 */
-#include "ray.h"
-#include "camera.h"
-#include "material.h"
-#include "sphere.h"
-#include "plane.h"
-#include "hittable_list.h"
-#include "BVH_Node.h"
-#include "rect.h"
-#include "box.h"
-#include "flip_face.h"
-#include "transform.h"
+#include "ray.cuh"
+#include "camera.cuh"
+#include "material.cuh"
+#include "sphere.cuh"
+#include "plane.cuh"
+#include "hittable_list.cuh"
+#include "BVH_Node.cuh"
+#include "rect.cuh"
+#include "box.cuh"
+#include "flip_face.cuh"
+#include "transform.cuh"
 
 /*
 EXTERNAL APIs
 */
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image/stb_image.h>
 #include <stb_image/stb_image_write.h>
 
 
@@ -82,7 +85,7 @@ __device__ glm::vec3 color_ray(const ray& r, hittable_list** world, int depth, c
 		else {
 
 			glm::vec3 dir = glm::normalize(cur_ray.dir);
-			float t = 0.5f * (dir.y + 1.0f);
+			float t = 0.5f * (dir.y() + 1.0f);
 			//sky = ((1.0f - t) * glm::vec3(0.8, 0.2, 0.9) + t * glm::vec3(0.1, 0.2, 0.9));
 			sky = ((1.0f - t) * glm::vec3(1) + t * glm::vec3(0.0));
 			
@@ -124,9 +127,9 @@ __global__ void render(unsigned char* fb, int max_x, int max_y, camera cam, hitt
 		ray r = cam.get_ray(u, v);
 		pixelColor += color_ray(r, world, depth, &local_rand_state);
 	}
-	fb[pixel_index + 2] = 255 * clamp(sqrt(pixelColor.b / number_of_samples), 0, 0.999f);
-	fb[pixel_index + 0] = 255 * clamp(sqrt(pixelColor.r / number_of_samples), 0, 0.999f);
-	fb[pixel_index + 1] = 255 * clamp(sqrt(pixelColor.g / number_of_samples), 0, 0.999f);
+	fb[pixel_index + 0] = 255 * clamp(sqrt(pixelColor.r() / number_of_samples), 0, 0.999f);
+	fb[pixel_index + 1] = 255 * clamp(sqrt(pixelColor.g() / number_of_samples), 0, 0.999f);
+	fb[pixel_index + 2] = 255 * clamp(sqrt(pixelColor.b() / number_of_samples), 0, 0.999f);
 }
 
 #define RND (curand_uniform(&local_rand_state))	
@@ -138,25 +141,25 @@ __global__ void createCornellBox(hittable** d_list, hittable_list** d_world)
 		int i = 0;
 		auto red = new lambertian(glm::vec3(0.65, 0.05, 0.05));
 		auto green = new lambertian(glm::vec3(0.12, 0.45, 0.15));
-		auto light = new diffuse_light(glm::vec3(15));
+		auto light = new diffuse_light(glm::vec3(1));
 		auto white = new lambertian(glm::vec3(0.73));
 		auto magenta = new lambertian(glm::vec3(0.8, 0.2, 0.9));
 		auto blue = new metal(glm::vec3(0.1, 0.2, 0.9), 0.5);
 
-		d_list[i++] = new yz_rect(0, 10, 0, 10, 10, green);
-		d_list[i++] = new yz_rect(0, 10, 0, 10, 0, red);
-		d_list[i++] = new flip_face(new xz_rect(3, 7, 3, 7, 9.5, light));
+		d_list[i++] = new yz_rect(0, 555, 0, 555, 555, green);
+		d_list[i++] = new yz_rect(0, 555, 0, 555, 0, red);
+		d_list[i++] = new flip_face(new xz_rect(113, 443, 127, 432, 554, light));
 		/*d_list[i++] = new xz_rect(10, 110, 445, 545, 545, light);
 		d_list[i++] = new xz_rect(445, 545, 10, 110, 554, light);
-		d_list[i++] = new xz_rect(445, 545, 445, 545, 554, light);*/
-		d_list[i++] = new xz_rect(0, 10, 0, 10, 0, white);
-		d_list[i++] = new xz_rect(0, 10, 0, 10, 10, white);
-		d_list[i++] = new xy_rect(0, 10, 0, 10, 10, white);
+		d_list[i++] = new xz_rect(445, 545, 445, 545, 554, light);*/	
+		d_list[i++] = new xz_rect(0, 555, 0, 555, 0, white);
+		d_list[i++] = new xz_rect(0, 555, 0, 555, 555, white);
+		d_list[i++] = new xy_rect(0, 555, 0, 555, 555, white);
 
 		//d_list[i++] = new sphere(glm::vec3(50, 10, 30), 10, white);
 		
-		d_list[i++] = new RotateY(new box(glm::vec3(130, 0, 65) * 0.018f, glm::vec3(295, 165, 230) * 0.018f, blue),0);
-		d_list[i++] = new box(glm::vec3(265, 0, 295) * 0.018f, glm::vec3(430, 330, 460) * 0.018f, blue);
+		d_list[i++] = new box(glm::vec3(130, 0, 65) , glm::vec3(295, 165, 230) , white);
+		d_list[i++] = new box(glm::vec3(265, 0, 295), glm::vec3(430, 330, 460) , white);
 
 
 		*d_world = new hittable_list(d_list, 8);
@@ -250,14 +253,14 @@ int main()
 	const int imageWidth = 600;
 	const int imageHeight = imageWidth / aspectRatio;
 	int num_of_pixels = imageWidth * imageHeight;
-	int number_of_samples = 100;
-	int depth = 10;
+	int number_of_samples = 25;
+	int depth = 100;
 	int limit = 3;
 	int tx = 16;
 	int ty = 16;
 
 	//CAMERA
-	camera cam(glm::vec3(5, 5, -10), glm::vec3(5, 5, 0), glm::vec3(0, 1, 0), 50, aspectRatio);
+	camera cam(glm::vec3(278, 278, -800), glm::vec3(278, 278, 0), glm::vec3(0, 1, 0), 40, aspectRatio);
 
 	std::cerr << "Rendering a " << imageWidth << "x" << imageHeight << " image \n";
 	std::cerr << "Number of blocks: " << (imageWidth / tx + 1) * (imageHeight / ty + 1) << "\n";
@@ -291,8 +294,8 @@ int main()
 	CudaCall(cudaMallocHost(&d_world_copy, sizeof(hittable_list)));
 	CudaCall(cudaMemcpy((void*)d_world_copy, (void*)*d_world, sizeof(hittable_list*), cudaMemcpyDeviceToHost));*/
 
-	BVH_Node* root;
-	CudaCall(cudaMallocHost((void**)&root, sizeof(BVH_Node)));
+	//BVH_Node* root;
+	//CudaCall(cudaMallocHost((void**)&root, sizeof(BVH_Node)));
 	//root = new BVH_Node(*d_world_copy, 0, 1);
 
 	//TIMING
