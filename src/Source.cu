@@ -162,7 +162,6 @@ __global__ void createCornellBox(hittable** d_list, hittable** d_world, camera**
 
 		d_list[i++] = new flip_face(new yz_rect(0, 555, 0, 555, 555, green));
 		d_list[i++] = new yz_rect(0, 555, 0, 555, 0, red);
-		d_list[i++] = new empty(d_list[i - 1]);
 		d_list[i++] = new flip_face(new xz_rect(113, 443, 127, 432, 554, light));
 		d_list[i++] = new xz_rect(0, 555, 0, 555, 0, white);
 		d_list[i++] = new flip_face(new xz_rect(0, 555, 0, 555, 555, white));
@@ -174,7 +173,7 @@ __global__ void createCornellBox(hittable** d_list, hittable** d_world, camera**
 		d_list[i++] = new box(glm::vec3(265, 0, 295), glm::vec3(430, 330, 460) , white);
 
 
-		*d_world = new hittable_list(d_list, i);
+		*d_world = new hittable_list(d_list, 8);
 
 		float aperture = 0.0;
 		float dist_to_focus = 10.0;
@@ -408,12 +407,7 @@ int main()
 {
 
 	DisplayHeader();
-	std::cout << "******************RAY TRACING USING CUDA******************\n";
-	std::string s = "";
-	int choice = 0;
-	std::cout << "Enter 1 for Scene1\nEnter 2 for Scene2\nEnter 3 for Scene3\nEnter 4 for Cornell Box\n";
-	std::cin >> choice;
-		
+
 	//stbi_flip_vertically_on_write(1);
 
 	const float aspectRatio = 16.0f / 9.0f;//3840.0f / 2160.0f;
@@ -445,42 +439,32 @@ int main()
 	CudaCall(cudaGetLastError());
 	CudaCall(cudaDeviceSynchronize());
 
+	int choice = 0;
+
+	switch (choice)
+	{
+	case 1 : 
+		break;
+	case 2 : 
+		break;
+	case 3 :
+		break;
+	case 4 :
+		break;
+	default :
+		break;
+	}
+
 	//WORLD
 	hittable** d_list;
-	CudaCall(cudaMalloc((void**)&d_list, (4 * 11 * 11 + 1 + 4) * sizeof(hittable*)));
+	CudaCall(cudaMalloc((void**)&d_list, (4 * limit * limit + 1 + 4) * sizeof(hittable*)));
 	hittable** d_world;
 	CudaCall(cudaMalloc((void**)&d_world, sizeof(hittable*)));
 	camera** cam;
 	CudaCall(cudaMalloc((void**)&cam, sizeof(camera*)));
-
-	switch (choice)
-	{
-	case 1:
-		scene1 << <1, 1 >> > (d_list, d_world, cam, imageWidth, imageHeight, limit, d_rand_state2);
-		CudaCall(cudaGetLastError());
-		CudaCall(cudaDeviceSynchronize());
-		break;
-	case 2:
-		scene2 << <1, 1 >> > (d_list, d_world, cam, imageWidth, imageHeight, limit, d_rand_state2);
-		CudaCall(cudaGetLastError());
-		CudaCall(cudaDeviceSynchronize());
-		break;
-	case 3:
-		scene3 << <1, 1 >> > (d_list, d_world, cam, imageWidth, imageHeight, limit, d_rand_state2);
-		CudaCall(cudaGetLastError());
-		CudaCall(cudaDeviceSynchronize());
-		break;
-	case 4:
-		createCornellBox << <1, 1 >> > (d_list, d_world, cam, imageWidth, imageHeight);
-		CudaCall(cudaGetLastError());
-		CudaCall(cudaDeviceSynchronize());
-		break;
-	default:
-		debugScene << <1, 1 >> > (d_list, d_world, cam, imageWidth, imageHeight);
-		CudaCall(cudaGetLastError());
-		CudaCall(cudaDeviceSynchronize());
-		break;
-	}
+	scene1 << <1, 1 >> > (d_list, d_world, cam, imageWidth, imageHeight, limit,d_rand_state2);
+	CudaCall(cudaGetLastError());
+	CudaCall(cudaDeviceSynchronize());
 
 
 	dim3 blocks(imageWidth / tx + 1, imageHeight / ty + 1);

@@ -36,35 +36,12 @@ __device__ bool Translate::bounding_box(float t0, float t1, AxisAllignedBounding
     return true;
 }
 
-class empty : public hittable {
-
-public:
-    __device__ empty(hittable* p) {
-        ptr = p;
-        hasbox = ptr->bounding_box(0, 1, bbox);
-    }
-
-    __device__ bool hit(const ray& r, float t_min, float t_max, hit_record& rec) const {
-        return ptr->hit(r, t_min, t_max, rec);
-    }
-
-    __device__ bool bounding_box(float t0, float t1, AxisAllignedBoundingBox& output_box) const {
-        output_box = bbox;
-        return hasbox;
-    }
-
-public:
-    hittable* ptr;
-    bool hasbox;
-    AxisAllignedBoundingBox bbox;
-};
-
 class RotateY : public hittable {
 public:
     __device__ RotateY(hittable* p, float angle);
 
     __device__ virtual bool hit(const ray& r, float t_min, float t_max, hit_record& rec) const;
-    __device__ bool bounding_box(float t0, float t1, AxisAllignedBoundingBox& output_box) const {
+    __device__ virtual bool bounding_box(float t0, float t1, AxisAllignedBoundingBox& output_box) const {
         output_box = bbox;
         return hasbox;
     }
@@ -76,9 +53,7 @@ public:
     AxisAllignedBoundingBox bbox;
 };
 
-__device__ RotateY::RotateY(hittable* p, float angle) {
-
-    ptr = p;
+__device__ RotateY::RotateY(hittable* p, float angle) : ptr(p) {
     auto radians = degrees_to_radians(angle);
     sin_theta = sin(radians);
     cos_theta = cos(radians);
